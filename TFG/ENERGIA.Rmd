@@ -1,0 +1,175 @@
+---
+title: "ENERGIA"
+author: "Luna Rubio Gomez"
+date: "2025-11-23"
+output: html_document
+---
+
+VAMOS BUSCANDO: cascada del electron y ninguna traza del muon.
+Hemos seleccionado PFP con mayor energía 
+Tenemos datos de particulas primaria νe y νμ y usamos nu_PDG para separar señal de fondo
+
+Background: neutrinos del muon y neutrinos del electron de corriente Neutra NC=1
+
+
+```{r}
+
+library(tidyverse)
+library(ggplot2)
+datos<-read.csv("datos.csv")
+
+datos <- datos %>%
+  mutate(category = case_when(
+    nu_PDG == 14 ~ "ν_μ",
+    nu_PDG == 12 & nu_CC_NC == 0 ~ "ν_e, CC",
+    nu_PDG == 12 & nu_CC_NC == 1 ~ "ν_e, NC",
+    TRUE ~ "Otro" # Para cualquier otro caso no especificado
+  ))
+
+datos$category <- factor(datos$category, levels = c("ν_μ", "ν_e, CC", "ν_e, NC"))
+colores <- c(
+  "ν_μ" = "#40E0D0",                
+  "ν_e, CC" = "#FF6F61", 
+  "ν_e, NC" = "blue" 
+)
+
+
+ggplot(datos, aes(x = slc_pfp_track_score, y = slc_pfp_shower_energy, color = category)) +
+  geom_point(alpha = 0.6) + # alpha ajusta la transparencia de los puntos
+  scale_color_manual(values = colores)+
+  labs(
+    title = "Track Score vs. Shower Energy",
+    x = "Track Score ",
+    y = "Shower Energy ",
+    color = "Tipo de neutrino"
+  ) +
+  theme_minimal()
+```
+
+
+
+
+
+
+```{r}
+
+ggplot(datos, aes(x = slc_pfp_track_score, y = slc_pfp_shower_opening_angle, color = category)) +
+  geom_point(alpha = 0.6) + 
+  scale_color_manual(values = colores)+
+  scale_y_continuous(limits = c(-0.1, 2))+
+  labs(
+    title = "Track Score vs. Opening angle",
+    x = "Track Score ",
+    y = "Opening angle ",
+    color = "Tipo de neutrino"
+  ) +
+  theme_minimal()
+
+```
+```{r}
+ggplot(datos, aes(x = slc_pfp_track_score, y = slc_pfp_shower_length, color = category)) +
+  geom_point(alpha = 0.6) + 
+  scale_color_manual(values = colores)+
+  scale_y_continuous(limits = c(0,600 ))+
+  labs(
+    title = "Track Score vs. Shower Length",
+    x = "Track Score ",
+    y = "Shower length ",
+    color = "Tipo de neutrino"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(datos, aes(x = slc_pfp_shower_energy, fill = category)) +
+  geom_histogram(bins = 40, position = "identity", alpha = 0.6) +
+  scale_fill_manual(values = colores) +
+  scale_x_continuous(limits = c(-0.1, 4000)) +
+  labs(
+    title = "Shower energy",
+    x = "Shower Energy [MeV]",
+    y = "Frecuencia",
+    fill = "Tipo de neutrino"
+  ) +
+  
+ 
+  theme_minimal()
+
+
+```
+Vemos mayor número de neutrinos del muon cercanos a shower energy 0
+
+```{r}
+ggplot(datos, aes(x = slc_pfp_track_score, fill = category)) +
+  geom_histogram(bins = 40, position = "identity", alpha = 0.6) +
+  scale_fill_manual(values = colores) +
+  
+  labs(
+    title = "Track score",
+    x = "Track score",
+    y = "Frecuencia",
+    fill = "Tipo de neutrino"
+  ) +
+  
+ 
+  theme_minimal()
+
+```
+
+
+
+```{r}
+ggplot(datos, aes(x = slc_pfp_shower_opening_angle, fill = category)) +
+  geom_histogram(bins = 40, position = "identity", alpha = 0.6) +
+  scale_fill_manual(values = colores) +
+  scale_x_continuous(limits = c(-0.1, 0.5)) +
+  labs(
+    title = "Opening angle",
+    x = "Opening angle",
+    y = "Frecuencia",
+    fill = "Tipo de neutrino"
+  ) +
+  
+ 
+  theme_minimal()
+
+```
+
+
+
+```{r}
+
+library(dplyr)
+
+library(GGally)
+
+colores_por_fila <- colores[datos$category]
+
+# 3. Generar la Matriz de Dispersión
+pairs(
+  ~ slc_pfp_track_score +slc_pfp_track_chi2_muon + slc_pfp_track_chi2_proton + 
+    slc_pfp_shower_length + slc_pfp_shower_opening_angle + 
+    slc_pfp_shower_energy ,
+  data = datos,
+  
+ 
+  col = colores_por_fila,
+  pch = 19,               
+  cex = 0.5,              
+  main = "Matriz de Dispersión ",
+  lower.panel = NULL
+)
+
+# 4. Añadir Leyenda
+# Esto debe hacerse por separado en base R. Ajusta la ubicación ("topleft", "bottomright", etc.)
+legend(
+  "bottomleft", 
+  legend = levels(datos$category), 
+  pch = 19, 
+  col = colores, 
+  cex = 0.8,
+  bty = "n" # Elimina la caja alrededor de la leyenda
+)
+
+
+```

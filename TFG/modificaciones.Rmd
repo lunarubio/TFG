@@ -1,0 +1,50 @@
+---
+title: "Neutrinos"
+author: "Luna Rubio Gomez"
+date: "2025-11-10"
+output: html_document
+---
+
+```{r}
+
+data1 <- read.csv("data_nue.csv")
+
+library(dplyr)
+library(ggplot2)
+
+
+#nos quedamos con la PFP de MAYOR ENERGÍA dentro de un mismo suceso
+
+datos_max <- data1 %>%
+  arrange(eventNo, desc(slc_pfp_shower_energy)) %>%  # ordena los eventos y luego energía descendente
+  distinct(eventNo, .keep_all = TRUE)  #nos quedamos solo con la de mayor energía
+
+```
+
+Buscamos cascada del electron y ninguna del muón 
+Hacemos lo mismo con los datos del muón 
+
+```{r }
+
+data_nu <- read.csv("data_numu.csv")
+
+
+#nos quedamos con la PFP de MAYOR ENERGÍA dentro de un mismo suceso
+
+datos_max2 <- data2 %>%
+  arrange(eventNo, desc(slc_pfp_shower_energy)) %>%  # ordena los eventos y luego energía descendente
+  distinct(eventNo, .keep_all = TRUE)  #nos quedamos solo con la de mayor energía
+
+```
+
+
+```{r}
+#juntamos los datos en el mismo csv
+
+datos <- rbind(datos_max, datos_max2)
+
+write.csv(datos, "datos.csv", row.names = FALSE)
+
+``` 
+
+

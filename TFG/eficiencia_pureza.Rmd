@@ -1,0 +1,716 @@
+---
+title: "pureza_eficiencia"
+author: "Luna Rubio Gomez"
+date: "2026-02-19"
+output: html_document
+---
+
+## TRACK SCORE BARRIDO
+
+````{r}
+library(tidyverse)
+library(ggplot2)
+
+
+datos<-read.csv("datos_limpios.csv")
+
+
+cortes_a_probar <- seq(min(datos$slc_pfp_track_score, na.rm = TRUE), 
+                       max(datos$slc_pfp_track_score, na.rm = TRUE), 
+                       length.out = 200)
+
+#Barrido ----------------------------------
+
+resultados_barrido <- lapply(cortes_a_probar, function(corte_actual) {
+
+  # Cuanto menor track score tenga, mas señal es porque es cascada
+  pasan_corte <- datos$slc_pfp_track_score < corte_actual
+
+  # Contamos los aciertos y errores para este corte específico
+  TP <- sum(pasan_corte == TRUE & datos$target == TRUE, na.rm = TRUE)
+  FP <- sum(pasan_corte == TRUE & datos$target == FALSE, na.rm = TRUE)
+  FN <- sum(pasan_corte == FALSE & datos$target == TRUE, na.rm = TRUE)
+  TN <- sum(pasan_corte == FALSE & datos$target == FALSE, na.rm = TRUE)
+
+  # Calculamos las métricas evitando divisiones por cero
+  eficiencia <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  pureza <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  fpr      <- ifelse((FP + TN) == 0, 0, FP / (FP + TN))
+
+  # Nuestra métrica
+  producto <- eficiencia * pureza
+
+  # Guardamos el resultado de esta iteración
+  return(data.frame(corte = corte_actual,
+                    eficiencia = eficiencia,
+                    pureza = pureza,
+                    producto_maximo = producto,
+                    fpr = fpr))
+})
+
+# Juntamos todos los resultados en una sola tabla
+tabla_resultados <- bind_rows(resultados_barrido)
+
+# ==========================================
+# 3. Extraer el mejor resultado absoluto
+# ==========================================
+corte_optimo <- tabla_resultados %>%
+  filter(producto_maximo == max(producto_maximo, na.rm = TRUE)) %>%
+  head(1) # Si hay empates, cogemos el primero
+
+# Imprimimos el ganador en la consola
+cat("\n=========================================\n")
+cat(" CORTE ÓPTIMO ENCONTRADO\n")
+cat("=========================================\n")
+cat("El mejor corte para 'track_score' es: <", round(corte_optimo$corte, 4), "\n")
+cat("Eficiencia esperada:", round(corte_optimo$eficiencia * 100, 2), "%\n")
+cat("Pureza esperada:", round(corte_optimo$pureza * 100, 2), "%\n")
+cat("Métrica (Eficiencia x Pureza):", round(corte_optimo$producto_maximo, 4), "\n")
+cat("=========================================\n")
+
+# ==========================================
+# 4. Dibujar la gráfica del "Sweet Spot"
+# ==========================================
+ggplot(tabla_resultados, aes(x = corte)) +
+  geom_line(aes(y = eficiencia, color = "Eficiencia"), linewidth = 1) +
+  geom_line(aes(y = pureza, color = "Pureza"), linewidth = 1) +
+  geom_line(aes(y = producto_maximo, color = "Eficiencia x Pureza"), linewidth = 1.2, linetype = "dashed") +
+  geom_vline(xintercept = corte_optimo$corte, linetype = "dotted", color = "black", linewidth = 1) +
+  labs(title = "Optimización del corte para 'track_score'",
+       subtitle = paste("El máximo se alcanza cortando en <", round(corte_optimo$corte, 4)),
+       x = "Valor del corte de track_score",
+       y = "Valor (0 a 1)",
+       color = "") +
+  scale_color_manual(values = c("Eficiencia" = "#3498db",
+                                "Pureza" = "#e74c3c",
+                                "Eficiencia x Pureza" = "#2ecc71")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+````
+
+
+````{r}
+
+#valor de corte 
+corte <- 0.5083 
+
+# Aplicamos el corte: decimos que todo lo MENOR al corte pasa como "señal" con TRUE
+
+pasan_corte <- datos$slc_pfp_track_score < corte
+
+
+# Verdaderos Positivos (TP): Es señal y SÍ pasó el corte
+TP <- sum(pasan_corte == TRUE & datos$target == TRUE, na.rm = TRUE)
+
+
+# Falsos Positivos (FP): Es fondo pero SÍ pasó el corte (se coló)
+FP <- sum(pasan_corte == TRUE & datos$target == FALSE, na.rm = TRUE)
+
+
+# Falsos Negativos (FN): Es señal pero NO pasó el corte (neutrinos perdidos)
+FN <- sum(pasan_corte == FALSE & datos$target == TRUE, na.rm = TRUE)
+
+#Total de datos que pasan el filtro
+filtrados<-sum(pasan_corte==TRUE)
+
+
+
+#EFICIENCIA Y PUREZA
+
+eficiencia <- TP / (TP + FN)
+pureza <- TP / (TP + FP)
+
+
+cat("--- RESULTADOS PARA EL CORTE EN:", corte, "---\n")
+cat("Verdaderos neutrinos retenidos (TP):", TP, "\n")
+cat("Eventos de fondo colados (FP):", FP, "\n")
+cat("Neutrinos perdidos (FN):", FN, "\n")
+cat("Total de datos que pasan el corte:", filtrados, "\n")
+cat("--------------------------------------\n")
+cat("Eficiencia:", round(eficiencia * 100, 2), "%\n")
+cat("Pureza:", round(pureza * 100, 2), "%\n")
+cat("Eficiencia x Pureza:", round(eficiencia * pureza, 4), "\n")
+
+````
+
+
+## SHOWER ENERGY
+
+````{r}
+library(tidyverse)
+library(ggplot2)
+
+# ==========================================
+# 1. Fijar el primer corte 
+# ==========================================
+corte_track <- 0.5083 
+
+# ==========================================
+# 2. Definir los cortes a probar para la 2da variable
+# ==========================================
+
+energia <- datos$slc_pfp_shower_energy[datos$slc_pfp_shower_energy >= 0]
+
+cortes_energia <- seq(min(energia, na.rm = TRUE), 
+                      max(energia, na.rm = TRUE), 
+                      length.out = 200)
+
+# ==========================================
+# 3. Hacer el barrido del segundo corte
+# ==========================================
+resultados_doble_corte <- lapply(cortes_energia, function(corte_actual) {
+  
+  # APLICAMOS AMBOS CORTES A LA VEZ
+  # track_score < 0.494  Y  shower_energy > corte_actual
+  
+  pasan_ambos <- (datos$slc_pfp_track_score < corte_track) & (datos$slc_pfp_shower_energy > corte_actual)
+  
+  # Contamos los aciertos y errores GLOBALES
+  TP <- sum(pasan_ambos == TRUE & datos$target == TRUE, na.rm = TRUE)
+  FP <- sum(pasan_ambos == TRUE & datos$target == FALSE, na.rm = TRUE)
+  
+  # FN: Neutrinos que NO pasaron (ya sea porque fallaron el 1er o el 2do corte)
+  FN <- sum(pasan_ambos == FALSE & datos$target == TRUE, na.rm = TRUE)
+  
+  # Calculamos las métricas globales
+  eficiencia <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  pureza <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  
+  # Producto global
+  producto <- eficiencia * pureza
+  
+  return(data.frame(corte_energia = corte_actual, 
+                    eficiencia = eficiencia, 
+                    pureza = pureza, 
+                    producto_maximo = producto))
+})
+
+# Juntamos los resultados
+tabla_doble <- bind_rows(resultados_doble_corte)
+
+# ==========================================
+# 4. Encontrar el mejor resultado global
+# ==========================================
+corte_optimo_energia <- tabla_doble %>%
+  filter(producto_maximo == max(producto_maximo, na.rm = TRUE)) %>%
+  head(1)
+
+# Imprimimos el ganador
+cat("\n=========================================\n")
+cat(" OPTIMIZACIÓN DEL SEGUNDO CORTE\n")
+cat("=========================================\n")
+cat("Corte 1 fijo: track_score <", corte_track, "\n")
+cat("Corte 2 óptimo: shower_energy >", round(corte_optimo_energia$corte_energia, 2), "\n")
+cat("-----------------------------------------\n")
+cat("Eficiencia Global:", round(corte_optimo_energia$eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(corte_optimo_energia$pureza * 100, 2), "%\n")
+cat("Producto Máximo:", round(corte_optimo_energia$producto_maximo, 4), "\n")
+cat("=========================================\n")
+
+# ==========================================
+# 5. Dibujar la curva para ver el comportamiento
+# ==========================================
+ggplot(tabla_doble, aes(x = corte_energia)) +
+  geom_line(aes(y = eficiencia, color = "Eficiencia Global"), linewidth = 1) +
+  geom_line(aes(y = pureza, color = "Pureza Global"), linewidth = 1) +
+  geom_line(aes(y = producto_maximo, color = "Eficiencia x Pureza"), linewidth = 1.2, linetype = "dashed") +
+  geom_vline(xintercept = corte_optimo_energia$corte_energia, linetype = "dotted", color = "black", linewidth = 1) +
+  labs(title = "Optimización Secuencial: shower_energy",
+       subtitle = paste("Asumiendo track_score < 0.494. Mejor corte en >", round(corte_optimo_energia$corte_energia, 2)),
+       x = "Valor de corte para shower_energy",
+       y = "Valor (0 a 1)",
+       color = "") +
+  scale_color_manual(values = c("Eficiencia Global" = "#3498db", 
+                                "Pureza Global" = "#e74c3c", 
+                                "Eficiencia x Pureza" = "#2ecc71")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+````
+### Nu score es valido
+````{r}
+
+
+#CORTES PREVIOS
+
+#0.6297 
+
+corte_track <- 0.5083 
+#corte_energia <- 1.67
+corte_nuscore<- 0.2923
+
+#FILTRO
+pasan_ambos <- (datos$slc_pfp_track_score < corte_track) & 
+  #(datos$slc_pfp_shower_energy > corte_energia) & 
+  (datos$slc_nu_score > corte_nuscore)
+
+
+# TP: Es señal y logró sobrevivir a LOS DOS filtros
+TP <- sum(pasan_ambos == TRUE & datos$target == TRUE, na.rm = TRUE)
+
+# FP: Es fondo pero logró colarse a través de LOS DOS filtros
+FP <- sum(pasan_ambos == TRUE & datos$target == FALSE, na.rm = TRUE)
+
+# FN: Es señal pero no pasó (o falló el primer corte, o falló el segundo, o ambos)
+FN <- sum(pasan_ambos == FALSE & datos$target == TRUE, na.rm = TRUE)
+
+
+eficiencia <- TP / (TP + FN)
+pureza <- TP / (TP + FP)
+
+# Imprimir resultados
+cat("--- RESULTADOS ---\n")
+cat("Verdaderos neutrinos seleccionados (TP):", TP, "\n")
+cat("Background colados (FP):", FP, "\n")
+cat("Neutrinos perdidos (FN):", FN, "\n")
+cat("Total de datos que pasan ambos cortes:", TP + FP, "\n")
+cat("--------------------------------------------------------------\n")
+cat("Eficiencia Global:", round(eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(pureza * 100, 2), "%\n")
+cat("Eficiencia x Pureza:", round(eficiencia * pureza, 4), "\n")
+
+
+
+
+
+
+
+
+````
+
+
+
+
+
+
+## CHI^2 no es muy relevante LO ELIMINO 
+
+````{r}
+
+#CORTES PREVIOS
+
+#0.6297 
+
+corte_track <- 0.5083 
+corte_energia <- 1.67
+corte_nuscore<- 0.2923
+corte_chi<- 0
+
+#FILTRO
+pasan_ambos <- (datos$slc_pfp_track_score < corte_track) & (datos$slc_pfp_shower_energy > corte_energia) & (datos$slc_nu_score > corte_nuscore)&(datos$slc_pfp_track_chi2_muon>corte_chi) 
+
+
+# TP: Es señal y logró sobrevivir a LOS DOS filtros
+TP <- sum(pasan_ambos == TRUE & datos$target == TRUE, na.rm = TRUE)
+
+# FP: Es fondo pero logró colarse a través de LOS DOS filtros
+FP <- sum(pasan_ambos == TRUE & datos$target == FALSE, na.rm = TRUE)
+
+# FN: Es señal pero no pasó (o falló el primer corte, o falló el segundo, o ambos)
+FN <- sum(pasan_ambos == FALSE & datos$target == TRUE, na.rm = TRUE)
+
+
+eficiencia <- TP / (TP + FN)
+pureza <- TP / (TP + FP)
+
+# Imprimir resultados
+cat("--- RESULTADOS ---\n")
+cat("Verdaderos neutrinos seleccionados (TP):", TP, "\n")
+cat("Background colados (FP):", FP, "\n")
+cat("Neutrinos perdidos (FN):", FN, "\n")
+cat("Total de datos que pasan ambos cortes:", TP + FP, "\n")
+cat("--------------------------------------------------------------\n")
+cat("Eficiencia Global:", round(eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(pureza * 100, 2), "%\n")
+cat("Eficiencia x Pureza:", round(eficiencia * pureza, 4), "\n")
+````
+
+### Angulo eliminando chi
+
+
+````{r}
+
+#CORTES PREVIOS
+
+ 
+
+corte_track <- 0.5083 
+corte_energia <- 1.67
+corte_nuscore<- 0.2923
+#corte_chi<- 0
+corte_ang<-0.0075
+
+#FILTRO
+pasan_ambos <- (datos$slc_pfp_track_score < corte_track) & (datos$slc_pfp_shower_energy > corte_energia) &
+  (datos$slc_nu_score > corte_nuscore)&
+#(datos$slc_pfp_track_chi2_muon>corte_chi) &
+  (datos$slc_pfp_shower_opening_angle>corte_ang)
+
+
+# TP: Es señal y logró sobrevivir a LOS DOS filtros
+TP <- sum(pasan_ambos == TRUE & datos$target == TRUE, na.rm = TRUE)
+
+# FP: Es fondo pero logró colarse a través de LOS DOS filtros
+FP <- sum(pasan_ambos == TRUE & datos$target == FALSE, na.rm = TRUE)
+
+# FN: Es señal pero no pasó (o falló el primer corte, o falló el segundo, o ambos)
+FN <- sum(pasan_ambos == FALSE & datos$target == TRUE, na.rm = TRUE)
+
+
+eficiencia <- TP / (TP + FN)
+pureza <- TP / (TP + FP)
+
+# Imprimir resultados
+cat("--- RESULTADOS ---\n")
+cat("Verdaderos neutrinos seleccionados (TP):", TP, "\n")
+cat("Background colados (FP):", FP, "\n")
+cat("Neutrinos perdidos (FN):", FN, "\n")
+cat("Total de datos que pasan ambos cortes:", TP + FP, "\n")
+cat("--------------------------------------------------------------\n")
+cat("Eficiencia Global:", round(eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(pureza * 100, 2), "%\n")
+cat("Eficiencia x Pureza:", round(eficiencia * pureza, 4), "\n")
+````
+
+
+````{r}
+
+#CORTES PREVIOS
+
+#0.6297 
+
+corte_track <- 0.5083 
+corte_energia <- 1.67
+corte_nuscore<- 0.2923
+#corte_chi<- 0
+corte_ang<-0.0075
+corte_long<-2.8653 
+
+
+#FILTRO
+pasan_ambos <- (datos$slc_pfp_track_score < corte_track) &
+  (datos$slc_pfp_shower_energy > corte_energia) & 
+  (datos$slc_nu_score > corte_nuscore) & 
+  
+#(datos$slc_pfp_track_chi2_muon>corte_chi) &
+
+(datos$slc_pfp_shower_opening_angle>corte_ang)&
+  (datos$slc_pfp_shower_length>corte_long)
+
+
+# TP: Es señal y logró sobrevivir a LOS DOS filtros
+TP <- sum(pasan_ambos == TRUE & datos$target == TRUE, na.rm = TRUE)
+
+# FP: Es fondo pero logró colarse a través de LOS DOS filtros
+FP <- sum(pasan_ambos == TRUE & datos$target == FALSE, na.rm = TRUE)
+
+# FN: Es señal pero no pasó (o falló el primer corte, o falló el segundo, o ambos)
+FN <- sum(pasan_ambos == FALSE & datos$target == TRUE, na.rm = TRUE)
+
+
+eficiencia <- TP / (TP + FN)
+pureza <- TP / (TP + FP)
+
+# Imprimir resultados
+cat("--- RESULTADOS CON 5 CORTES ---\n")
+cat("Verdaderos neutrinos seleccionados (TP):", TP, "\n")
+cat("Background colados (FP):", FP, "\n")
+cat("Neutrinos perdidos (FN):", FN, "\n")
+cat("Total de datos que pasan los cortes:", TP + FP, "\n")
+cat("--------------------------------------------------------------\n")
+cat("Eficiencia Global:", round(eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(pureza * 100, 2), "%\n")
+cat("Eficiencia x Pureza:", round(eficiencia * pureza, 4), "\n")
+````
+````{r}
+
+#CORTES PREVIOS
+
+#0.6297 
+
+corte_track <- 0.5083 
+corte_energia <- 1.67
+corte_nuscore<- 0.2923
+#corte_chi<- 0
+corte_ang<-0.0075
+corte_long<-2.8653 
+
+
+#FILTRO
+pasan_ambos <- 
+  (datos$slc_pfp_track_score < corte_track) &
+  #(datos$slc_pfp_shower_energy > corte_energia) & 
+  #(datos$slc_nu_score > corte_nuscore) & 
+  
+#(datos$slc_pfp_track_chi2_muon>corte_chi) &
+
+(datos$slc_pfp_shower_opening_angle>corte_ang)&
+  (datos$slc_pfp_shower_length>corte_long)
+
+
+# TP: Es señal y logró sobrevivir a LOS DOS filtros
+TP <- sum(pasan_ambos == TRUE & datos$target == TRUE, na.rm = TRUE)
+
+# FP: Es fondo pero logró colarse a través de LOS DOS filtros
+FP <- sum(pasan_ambos == TRUE & datos$target == FALSE, na.rm = TRUE)
+
+# FN: Es señal pero no pasó (o falló el primer corte, o falló el segundo, o ambos)
+FN <- sum(pasan_ambos == FALSE & datos$target == TRUE, na.rm = TRUE)
+
+
+eficiencia <- TP / (TP + FN)
+pureza <- TP / (TP + FP)
+
+# Imprimir resultados
+cat("--- RESULTADOS CON CORTES en trackscore, angle y length ---\n")
+cat("Verdaderos neutrinos seleccionados (TP):", TP, "\n")
+cat("Background colados (FP):", FP, "\n")
+cat("Neutrinos perdidos (FN):", FN, "\n")
+cat("Total de datos que pasan los cortes:", TP + FP, "\n")
+cat("--------------------------------------------------------------\n")
+cat("Eficiencia Global:", round(eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(pureza * 100, 2), "%\n")
+cat("Eficiencia x Pureza:", round(eficiencia * pureza, 4), "\n")
+````
+
+
+
+
+#BARRIDO 
+
+```{r}
+
+library(tidyverse)
+library(ggplot2)
+
+#fijar cortes
+
+corte_track <- 0.5083 
+corte_energia <- 1.67
+corte_nuscore<-0.2923
+corte_chi<- 0
+corte_ang<-0.0075
+
+# ==========================================
+# 2. Configurar la 3ra variable 
+# ==========================================
+
+valores_var3 <- datos$slc_pfp_shower_length[datos$slc_pfp_shower_length>=0]
+
+
+# Creamos los 200 cortes a probar
+
+cortes_var3 <- seq(min(valores_var3, na.rm = TRUE), 
+                   max(valores_var3, na.rm = TRUE), 
+                   length.out = 200)
+
+# ==========================================
+# 3. Hacer el barrido del tercer corte
+# ==========================================
+resultados_triple_corte <- lapply(cortes_var3, function(corte_actual) {
+  
+# APLICAMOS LOS TRES CORTES A LA VEZ (Con un AND lógico '&')
+  
+  
+  pasan_todos <- (datos$slc_pfp_track_score < corte_track) & 
+                 (datos$slc_pfp_shower_energy > corte_energia) & 
+                 (datos$slc_nu_score > corte_nuscore) &
+                  #(datos$slc_pfp_track_chi2_muon > corte_chi)&
+                  
+                  (datos$slc_pfp_shower_opening_angle>corte_ang)&
+                  (datos$slc_pfp_shower_length > corte_actual)
+  
+  # Contamos los aciertos y errores GLOBALES
+  TP <- sum(pasan_todos == TRUE & datos$target == TRUE, na.rm = TRUE)
+  FP <- sum(pasan_todos == TRUE & datos$target == FALSE, na.rm = TRUE)
+  FN <- sum(pasan_todos == FALSE & datos$target == TRUE, na.rm = TRUE)
+  
+  # Calculamos las métricas globales
+  eficiencia <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  pureza <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  
+  # Producto global
+  producto <- eficiencia * pureza
+  
+  return(data.frame(corte_var3 = corte_actual, 
+                    eficiencia = eficiencia, 
+                    pureza = pureza, 
+                    producto_maximo = producto))
+})
+
+# Juntamos los resultados
+tabla_triple <- bind_rows(resultados_triple_corte)
+
+# ==========================================
+# 4. Encontrar el mejor resultado global
+# ==========================================
+corte_optimo_var3 <- tabla_triple %>%
+  filter(producto_maximo == max(producto_maximo, na.rm = TRUE)) %>%
+  head(1)
+
+# Imprimimos el ganador
+cat("\n=========================================\n")
+cat(" OPTIMIZACIÓN DEL CORTE \n")
+cat("=========================================\n")
+cat("Corte 1 fijo: slc_pfp_track_score <", corte_track, "\n")
+cat("Corte 2 fijo: slc_pfp_shower_energy >", corte_energia, "\n")
+cat("Corte 3 fijo: slc_pfp_nu_score >", corte_nuscore, "\n")
+cat("Corte 4 fijo: slc_pfp_chi^2 >", corte_chi, "\n")
+cat("Corte 5 fijo: opening angle >", corte_ang, "\n")
+
+cat("Corte 6 óptimo: shower length >", round(corte_optimo_var3$corte_var3, 4), "\n")
+cat("-----------------------------------------\n")
+cat("Eficiencia Global:", round(corte_optimo_var3$eficiencia * 100, 2), "%\n")
+cat("Pureza Global:", round(corte_optimo_var3$pureza * 100, 2), "%\n")
+cat("Producto Máximo con solo track-score: 0.6297 \n" )
+cat("Producto Máximo con 6 cortes:", round(corte_optimo_var3$producto_maximo, 4), "\n")
+cat("=========================================\n")
+```
+
+
+## SPLIT 70/30: Validación del corte de track_score
+
+```{r validacion_track}
+library(tidyverse)
+library(ggplot2)
+library(knitr)
+
+set.seed(42)
+n         <- nrow(datos)
+idx_train <- sample(seq_len(n), size = floor(0.7 * n))
+train     <- datos[idx_train, ]
+test      <- datos[-idx_train, ]
+
+# --- Barrido solo en TRAIN ---
+cortes <- seq(min(train$slc_pfp_track_score, na.rm = TRUE),
+              max(train$slc_pfp_track_score, na.rm = TRUE),
+              length.out = 200)
+
+tabla_train <- bind_rows(lapply(cortes, function(c) {
+  pasan <- train$slc_pfp_track_score < c
+  TP  <- sum(pasan & train$target == 1, na.rm = TRUE)
+  FP  <- sum(pasan & train$target == 0, na.rm = TRUE)
+  FN  <- sum(!pasan & train$target == 1, na.rm = TRUE)
+  eff <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  pur <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  data.frame(corte = c, eficiencia = eff, pureza = pur, producto = eff * pur)
+}))
+
+corte_final <- tabla_train$corte[which.max(tabla_train$producto)]
+
+# --- Aplicar a TEST ---
+pasan_test <- test$slc_pfp_track_score < corte_final
+TP_t  <- sum(pasan_test  & test$target == 1, na.rm = TRUE)
+FP_t  <- sum(pasan_test  & test$target == 0, na.rm = TRUE)
+FN_t  <- sum(!pasan_test & test$target == 1, na.rm = TRUE)
+TN_t  <- sum(!pasan_test & test$target == 0, na.rm = TRUE)
+eff_t <- TP_t / (TP_t + FN_t)
+pur_t <- TP_t / (TP_t + FP_t)
+acc_t <- (TP_t + TN_t) / (TP_t + TN_t + FP_t + FN_t)
+
+# --- Train en el corte óptimo ---
+pasan_train <- train$slc_pfp_track_score < corte_final
+TP_tr  <- sum(pasan_train  & train$target == 1, na.rm = TRUE)
+FP_tr  <- sum(pasan_train  & train$target == 0, na.rm = TRUE)
+FN_tr  <- sum(!pasan_train & train$target == 1, na.rm = TRUE)
+TN_tr  <- sum(!pasan_train & train$target == 0, na.rm = TRUE)
+eff_tr <- TP_tr / (TP_tr + FN_tr)
+pur_tr <- TP_tr / (TP_tr + FP_tr)
+acc_tr <- (TP_tr + TN_tr) / (TP_tr + TN_tr + FP_tr + FN_tr)
+
+# --- Tabla resumen ---
+kable(data.frame(
+  Conjunto     = c("Train (70%)", "Test (30%)"),
+  TP           = c(TP_tr,  TP_t),
+  FP           = c(FP_tr,  FP_t),
+  FN           = c(FN_tr,  FN_t),
+  TN           = c(TN_tr,  TN_t),
+  Accuracy     = paste0(round(c(acc_tr, acc_t) * 100, 2), " %"),
+  Eficiencia   = paste0(round(c(eff_tr, eff_t) * 100, 2), " %"),
+  Pureza       = paste0(round(c(pur_tr, pur_t) * 100, 2), " %"),
+  `Efic x Pur` = round(c(eff_tr * pur_tr, eff_t * pur_t), 4)
+), caption = paste("Metricas del corte track_score <", round(corte_final, 4)),
+   align = "c")
+```
+
+```{r validacion_track_plot}
+ggplot(tabla_train, aes(x = corte)) +
+  geom_line(aes(y = eficiencia, color = "Eficiencia"), linewidth = 1) +
+  geom_line(aes(y = pureza,     color = "Pureza"),     linewidth = 1) +
+  geom_line(aes(y = producto,   color = "Efic x Pur"), linewidth = 1.2, linetype = "dashed") +
+  geom_vline(xintercept = corte_final, linetype = "dotted", color = "black", linewidth = 1) +
+  annotate("point", x = corte_final, y = eff_t, color = "#3498db", size = 4, shape = 17) +
+  annotate("point", x = corte_final, y = pur_t, color = "#e74c3c", size = 4, shape = 17) +
+  annotate("text", x = corte_final, y = eff_t + 0.02,
+           label = paste0("Test: ", round(eff_t * 100, 1), "%"),
+           color = "#3498db", size = 3.2, hjust = -0.1) +
+  annotate("text", x = corte_final, y = pur_t - 0.03,
+           label = paste0("Test: ", round(pur_t * 100, 1), "%"),
+           color = "#e74c3c", size = 3.2, hjust = -0.1) +
+  scale_color_manual(values = c("Eficiencia" = "#3498db",
+                                "Pureza"     = "#e74c3c",
+                                "Efic x Pur" = "#2ecc71")) +
+  labs(title    = "Validacion 70/30 - track_score",
+       subtitle = paste0("Curvas optimizadas en Train | Triangulos = rendimiento real en Test",
+                         "  |  Corte: < ", round(corte_final, 4)),
+       x = "Valor del corte de track_score",
+       y = "Valor (0 a 1)",
+       color = "") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r validacion_roc}
+# Barrido sobre TEST para construir la curva ROC
+cortes_test <- seq(min(test$slc_pfp_track_score, na.rm = TRUE),
+                   max(test$slc_pfp_track_score, na.rm = TRUE),
+                   length.out = 200)
+
+roc_test <- bind_rows(lapply(cortes_test, function(c) {
+  pasan <- test$slc_pfp_track_score < c
+  TP  <- sum(pasan & test$target == 1, na.rm = TRUE)
+  FP  <- sum(pasan & test$target == 0, na.rm = TRUE)
+  FN  <- sum(!pasan & test$target == 1, na.rm = TRUE)
+  TN  <- sum(!pasan & test$target == 0, na.rm = TRUE)
+  tpr <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  fpr <- ifelse((FP + TN) == 0, 0, FP / (FP + TN))
+  data.frame(corte = c, tpr = tpr, fpr = fpr)
+})) %>% arrange(fpr)
+
+# AUC por regla del trapecio
+auc_test <- sum(diff(roc_test$fpr) *
+                (head(roc_test$tpr, -1) + tail(roc_test$tpr, -1)) / 2)
+
+# FPR del corte óptimo sobre test
+TN_t  <- sum(!pasan_test & test$target == 0, na.rm = TRUE)
+fpr_optimo <- FP_t / (FP_t + TN_t)
+
+cat("AUC (curva ROC sobre test):", round(auc_test, 4), "\n")
+
+grafico <- ggplot(roc_test, aes(x = fpr, y = tpr)) +
+  geom_area(fill = "#d7bde2", alpha = 0.4) +
+  geom_line(color = "#8e44ad", linewidth = 1.2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  annotate("point", x = fpr_optimo, y = eff_t, color = "black", size = 3.5, shape = 17) +
+  annotate("text",  x = fpr_optimo + 0.02, y = eff_t - 0.04,
+           label = paste0("Optimal cut\nFPR = ", round(fpr_optimo, 3),
+                          "  TPR = ", round(eff_t, 3)),
+           hjust = 0, size = 3.5, fontface = "bold") +
+  annotate("text", x = 0.65, y = 0.35,
+           label = paste("AUC == ", round(auc_test, 4)),
+           parse = TRUE, size = 6, color = "#8e44ad", fontface = "bold") +
+  labs(title = "ROC Curve - Track Score",
+       x = "False Positive Rate (1- Specificity)",
+       y = "True Positive Rate (Sensitivity)") +
+  theme_minimal() +
+  theme(
+    plot.title  = element_text(size = 14, face = "bold", hjust = 0.5),
+    axis.title  = element_text(size = 12, face = "bold"),
+    axis.text   = element_text(size = 10, face = "bold"),
+    panel.grid.major = element_line(color = "gray92")
+  )
+
+grafico
+ggsave("roc_track.png", plot = grafico, width = 8, height = 6, dpi = 300)
+```
