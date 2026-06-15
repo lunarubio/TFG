@@ -160,8 +160,7 @@ pairs(
   lower.panel = NULL
 )
 
-# 4. Añadir Leyenda
-# Esto debe hacerse por separado en base R. Ajusta la ubicación ("topleft", "bottomright", etc.)
+
 legend(
   "bottomleft", 
   legend = levels(datos$category), 
